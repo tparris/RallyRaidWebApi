@@ -1,4 +1,13 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+
 var builder = WebApplication.CreateBuilder(args);
+//Add the Entity Framework Core DbContext
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<RaceDb>(options =>
+options.UseSqlServer(connectionString));
+
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -24,61 +33,82 @@ var summaries = new[]
 
 
 #region Cars endpoints
-
-app.MapGet("api/cars", () =>
+//get cars
+app.MapGet("api/cars", 
+    (RaceDb db) =>
 {
-    var car1 = new Car
-    {
-        TeamName = "Team A"
-    };
-
-    var car2 = new Car
-    {
-        TeamName = "Team B"
-    };
-
-    var cars = new List<Car>
-    {
-        car1, car2
-    };
-    return cars;
+    var cars = db.Cars.ToList();
+    return Results.Ok(cars);
 })
     .WithName("GetCars")
     .WithTags("Cars");
 
+//get car
 app.MapGet("api/cars/{id}",
-    (int id) =>
+    (int id, RaceDb db) =>
     {
-        var car1 = new Car
+        var dbCar = db.Cars.FirstOrDefault(x => x.Id == id);
+        if (dbCar == null)
         {
-            TeamName = "Team A"
-        };
-        return car1;
+            return Results.NotFound($" Car with {id} not found");
+        }
+
+        return Results.Ok(dbCar);
 
     })
     .WithName("GetCar")
     .WithTags("Cars");
 
+//create car
 app.MapPost("api/cars",
-    (Car car) =>
+    (CarCreateModel carModel,RaceDb db) =>
     {
-        return car;
+        var newCar = new Car
+        {
+            TeamName = carModel.TeamName,
+            Speed = carModel.Speed,
+            MelfunctionChance = carModel.MelfunctionChance
+        };
+
+        db.Cars.Add(newCar);
+        db.SaveChanges();
+
+        return Results.Ok(newCar);
     }).WithName("CreateCar")
     .WithTags("Cars");
 
+//update car
 app.MapPut("api/cars/{id}",
-    (Car car) =>
+    ([FromQuery] int id, [FromBody]CarCreateModel carModel, RaceDb db) =>
     {
-        return car;
+        var dbCar = db.Cars.FirstOrDefault(x => x.Id == id);
+        if (dbCar == null)
+        {
+            return Results.NotFound($" Car with {id} not found");
+        }
+
+        dbCar.TeamName = carModel.TeamName;
+        dbCar.Speed = carModel.Speed;
+        dbCar.MelfunctionsOccured = (int) carModel.MelfunctionChance;
+        db.SaveChanges();
+
+        return Results.Ok(dbCar);
     })
     .WithName("UpdateCar")
     .WithTags("Cars");
 
-
+//delete car
 app.MapDelete("api/cars/{id}",
-    (int id) =>
+    (int id, RaceDb db) =>
     {
-        return $"Car with id: {id} was deleted";
+        var dbCar = db.Cars.FirstOrDefault(x => x.Id == id);
+        if (dbCar == null)
+        {
+            return Results.NotFound($" Car with {id} not found");
+        }
+        db.Remove(dbCar);
+        db.SaveChanges();
+        return Results.Ok($"Car with {id} has been deleted");
     })
     .WithName("DeleteCar")
     .WithTags("Cars");
@@ -182,6 +212,13 @@ public record Car
     public int RacedForHours { get; set; }
 }
 
+
+public record CarCreateModel
+{
+    public string TeamName { get; set; }
+    public int Speed { get; set; }
+    public double MelfunctionChance { get; set; }
+}
 public record Motorbike
 {
     public int Id { get; set; }
@@ -195,3 +232,16 @@ public record Motorbike
 }
 #endregion
 
+
+//Persistance
+public class RaceDb : DbContext
+{
+    public RaceDb(DbContextOptions<RaceDb> options) : base(options)
+    {
+    }
+
+    public DbSet<Car> Cars { get; set; }
+
+    public DbSet<Motorbike> Motorbikes { get; set; }
+    
+}
